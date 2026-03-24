@@ -1,0 +1,96 @@
+# =============================================================================
+# config.yaml
+# Project-wide configuration for the Spatio-Temporal Temperature Forecasting
+# pipeline.  All paths are relative to the project root.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Raw-data paths
+# ---------------------------------------------------------------------------
+data:
+  # Weather-station measurements CSV (extract from .rar if necessary)
+  weather_data: weather_station_data_202406202154.csv
+  # Station metadata CSV
+  station_data: weather_stations_202406211148.csv
+  # Hydrological shapefiles
+  lakes_shp:  idrografia_laghi.shp
+  rivers_shp: idrografia_lineare.shp
+
+# ---------------------------------------------------------------------------
+# Feature configuration
+# ---------------------------------------------------------------------------
+features:
+  target: temperature          # regression target column
+  drop_cols:                   # columns removed before building X
+    - temperature
+    - geometry
+    - station_id
+    - timestamp
+    - name
+
+# ---------------------------------------------------------------------------
+# Model hyper-parameters
+# ---------------------------------------------------------------------------
+models:
+
+  # --- Classical ML ---
+  ridge:
+    alpha: 1.0
+
+  lasso:
+    alpha: 1.0
+
+  svr:
+    kernel: rbf
+    C: 1.0
+
+  random_forest:
+    n_estimators: 200
+    random_state: 42
+
+  lightgbm:
+    n_estimators: 200
+    learning_rate: 0.05
+    max_depth: -1             # -1 = no limit
+
+  xgboost:
+    n_estimators: 200
+    learning_rate: 0.05
+    max_depth: 6
+    random_state: 42
+
+  # --- Spatial interpolation ---
+  kriging:
+    variogram_model: linear   # linear | power | gaussian | spherical
+    grid_resolution: 50       # grid points per axis
+
+  # --- Deep learning ---
+  transformer:
+    d_model: 64
+    num_heads: 4
+    num_layers: 2
+    dropout: 0.1
+    epochs: 50
+    batch_size: 128
+
+  tcn:
+    filters: 64
+    kernel_size: 3
+    num_blocks: 3
+    dropout: 0.1
+    epochs: 50
+    batch_size: 128
+
+  keras_tuner_mlp:
+    max_trials: 10
+    epochs: 50
+    validation_split: 0.2
+
+  # --- Graph Convolutional Network ---
+  gcn:
+    n_subsample: 8000
+    k_neighbours: 6
+    hidden_dim: 64
+    lr: 0.001
+    epochs: 150
+    seed: 42
