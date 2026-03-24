@@ -385,7 +385,6 @@ def build_pipeline(config: dict) -> gpd.GeoDataFrame:
     return station_gdf
 
 # Private aliases used by tests
-_add_temporal_features = add_temporal_features
 
 def _distance_to_nearest(points_gdf, reference_gdf):
     return points_gdf.geometry.apply(

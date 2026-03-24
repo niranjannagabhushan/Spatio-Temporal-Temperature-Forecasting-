@@ -54,7 +54,7 @@ def load_weather_data(path: str) -> pd.DataFrame:
         Raw weather measurements with columns: station_id, temperature,
         timestamp.
     """
-    return pd.read_csv(Path(path))
+    return pd.read_csv(Path(path), parse_dates=["timestamp"])
 
 
 def load_station_metadata(path: str) -> pd.DataFrame:
@@ -78,7 +78,8 @@ def load_station_metadata(path: str) -> pd.DataFrame:
         Station metadata with ``id`` renamed to ``station_id``.
     """
     df = pd.read_csv(Path(path))
-    df.rename(columns={"id": "station_id"}, inplace=True)
+    if "id" in df.columns and "station_id" not in df.columns:
+        df.rename(columns={"id": "station_id"}, inplace=True)
     return df
 
 
@@ -102,6 +103,6 @@ def load_shapefiles(
     tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]
         ``(aosta_lakes, aosta_rivers)`` — one GeoDataFrame per layer.
     """
-    aosta_lakes = gpd.read_file(Path(lakes_path))
-    aosta_rivers = gpd.read_file(Path(rivers_path))
+    aosta_lakes = gpd.read_file(lakes_path)
+    aosta_rivers = gpd.read_file(rivers_path)
     return aosta_lakes, aosta_rivers

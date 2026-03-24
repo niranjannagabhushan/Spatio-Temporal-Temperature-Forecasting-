@@ -41,9 +41,16 @@ def minimal_config() -> dict:
     return {
         "data": {
             "weather_data": "weather.csv",
-            "station_data":  "stations.csv",
-            "lakes_shp":     "lakes.shp",
-            "rivers_shp":    "rivers.shp",
+            "station_metadata": "stations.csv",
+            "lakes_shapefile":  "lakes.shp",
+            "rivers_shapefile": "rivers.shp",
+        },
+        "crs": {
+            "input":  "EPSG:4326",
+            "target": "EPSG:32632",
+        },
+        "preprocessing": {
+            "target_col": "temperature",
         },
         "features": {
             "target":    "temperature",
