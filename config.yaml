@@ -11,5 +11,28 @@ crs:
   input:  "EPSG:4326"   # WGS-84 geographic CRS used by the raw station data
   target: "EPSG:32632"  # UTM zone 32N – used for metric distance calculations
 
+# ── Deep-learning model hyper-parameters ──────────────────────────────────────
+# batch_size is set to 512 for the large dataset (~1.95 M samples).
+# A batch of 16 (the original value) produced ~122,014 steps per epoch, which
+# is extremely slow and fails to exploit hardware parallelism.  512 reduces
+# that to ~3,814 steps per epoch while keeping gradient noise low enough for
+# stable convergence.
+models:
+  transformer:
+    d_model: 32
+    num_heads: 2
+    num_layers: 2
+    dropout: 0.1
+    epochs: 30
+    batch_size: 512   # was 16 → raised to 512 for efficient large-dataset training
+
+  tcn:
+    filters: 64
+    kernel_size: 3
+    num_blocks: 3
+    dropout: 0.1
+    epochs: 30
+    batch_size: 512   # was 16 → raised to 512 for efficient large-dataset training
+
 preprocessing:
   target_col: "temperature"
