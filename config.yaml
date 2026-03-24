@@ -1,33 +1,15 @@
-# ---------------------------------------------------------------------------
-# Geospatial ML project — central configuration
-# All file paths are relative to the project root directory.
-# ---------------------------------------------------------------------------
+# ── Geospatial ML project configuration ─────────────────────────────────────
+# All file paths are relative to the project root (where config.yaml lives).
 
 data:
-  # Raw tabular inputs
-  weather_data:     "weather_station_data_202406202154.csv"
+  weather_data:    "weather_station_data_202406202154.csv"
   station_metadata: "weather_stations_202406211148.csv"
-
-  # Geospatial shapefiles
   lakes_shapefile:  "idrografia_laghi.shp"
   rivers_shapefile: "idrografia_lineare.shp"
 
 crs:
-  # Source CRS of the station coordinates (WGS-84 geographic)
-  input:  "EPSG:4326"
-  # Projected CRS used for distance calculations (UTM zone 32N)
-  target: "EPSG:32632"
+  input:  "EPSG:4326"   # WGS-84 geographic CRS used by the raw station data
+  target: "EPSG:32632"  # UTM zone 32N – used for metric distance calculations
 
-model:
-  # Columns used as predictors by both notebooks
-  features:
-    - hour
-    - day_of_week
-    - latitude
-    - longitude
-    - altitude
-    - distance_to_lake
-    - distance_to_river
-  target: "temperature"
-  test_size: 0.2
-  random_state: 42
+preprocessing:
+  target_col: "temperature"
