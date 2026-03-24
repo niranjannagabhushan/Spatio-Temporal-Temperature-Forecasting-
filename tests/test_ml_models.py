@@ -200,11 +200,7 @@ class TestTrainXGBoost:
 
 @pytest.fixture(scope="module")
 def all_models_results(synthetic_station_gdf, minimal_config):
-    """Run all 6 ML models once and cache the result for the entire module.
-
-    Avoids re-training all models for each test method in TestRunAllModels,
-    reducing 30 total training operations down to 6.
-    """
+    """Run all 6 ML models once and cache the result for the whole module."""
     return run_all_models(synthetic_station_gdf, minimal_config)
 
 
