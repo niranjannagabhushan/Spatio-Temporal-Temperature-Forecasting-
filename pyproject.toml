@@ -1,0 +1,84 @@
+# =============================================================================
+# pyproject.toml
+# Build system, package metadata, optional dependencies, and tool settings.
+# =============================================================================
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+# ---------------------------------------------------------------------------
+# Package metadata
+# ---------------------------------------------------------------------------
+[project]
+name        = "spatio-temporal-temperature-forecasting"
+version     = "0.1.0"
+description = "Spatio-Temporal Temperature Forecasting using ML and Deep Learning"
+readme      = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "geopandas>=0.14",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "xgboost>=2.0",
+    "lightgbm>=4.0",
+    "pyyaml>=6.0",
+    "shapely>=2.0",
+]
+
+[project.optional-dependencies]
+kriging       = ["pykrige>=1.7"]
+deep-learning = ["tensorflow>=2.13", "keras-tuner>=1.4"]
+gcn           = ["torch>=2.0", "torch-geometric>=2.3"]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pykrige>=1.7",          # needed for kriging tests
+]
+all = [
+    "pykrige>=1.7",
+    "tensorflow>=2.13",
+    "keras-tuner>=1.4",
+    "torch>=2.0",
+    "torch-geometric>=2.3",
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+# ---------------------------------------------------------------------------
+# pytest configuration
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-v --tb=short"
+markers   = [
+    "slow: marks tests as slow — skip with '-m \"not slow\"'",
+    "requires_pykrige: needs pykrige installed",
+    "requires_tensorflow: needs tensorflow installed",
+    "requires_torch: needs PyTorch installed",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage configuration (used with pytest-cov)
+# Run: pytest --cov=src --cov-report=term-missing
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source  = ["src"]
+omit    = ["*/tests/*", "*/benchmarks/*", "*/notebooks/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise ImportError",
+    "except ImportError",
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------------------
+# Setuptools package discovery
+# ---------------------------------------------------------------------------
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
