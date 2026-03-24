@@ -312,3 +312,11 @@ def build_pipeline(config: dict) -> gpd.GeoDataFrame:
     station_gdf  = drop_missing_targets(station_gdf, target_col=pre_cfg["target_col"])
 
     return station_gdf
+
+# Private aliases used by tests
+_add_temporal_features = add_temporal_features
+
+def _distance_to_nearest(points_gdf, reference_gdf):
+    return points_gdf.geometry.apply(
+        lambda pt: reference_gdf.geometry.distance(pt).min()
+    )
