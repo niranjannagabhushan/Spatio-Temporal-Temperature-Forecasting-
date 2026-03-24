@@ -227,6 +227,12 @@ def _add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     df["month"]       = df["timestamp"].dt.month
     return df
 
+
+def _distance_to_nearest(points_gdf, reference_gdf):
+    """Private helper: distance from each point to the nearest reference geometry."""
+    union = reference_gdf.geometry.union_all()
+    return points_gdf.geometry.distance(union)
+
 def add_temporal_features(station_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Parse the timestamp column and extract cyclic temporal features.
 
@@ -275,6 +281,20 @@ def _add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ── Step 10 ───────────────────────────────────────────────────────────────────
+
+
+def _add_temporal_features(df):
+    """Private helper: add temporal columns to a plain DataFrame (returns a copy)."""
+    df = df.copy()
+    if "timestamp" not in df.columns:
+        return df
+    import pandas as pd
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df["hour"]        = df["timestamp"].dt.hour
+    df["day_of_week"] = df["timestamp"].dt.dayofweek
+    df["day_of_year"] = df["timestamp"].dt.dayofyear
+    df["month"]       = df["timestamp"].dt.month
+    return df
 
 def drop_missing_targets(
     station_gdf: gpd.GeoDataFrame,
