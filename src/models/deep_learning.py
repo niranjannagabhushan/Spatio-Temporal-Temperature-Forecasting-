@@ -217,7 +217,7 @@ def train_transformer(
         Reads from ``config['models']['transformer']`` — keys
         ``d_model`` (int, default 32), ``num_heads`` (int, default 2),
         ``num_layers`` (int, default 2), ``dropout`` (float, default 0.1),
-        ``epochs`` (int, default 30), ``batch_size`` (int, default 64).
+        ``epochs`` (int, default 30), ``batch_size`` (int, default 512).
 
     Returns
     -------
@@ -237,7 +237,7 @@ def train_transformer(
     num_layers = tf_cfg.get("num_layers", 2)
     dropout_rate = tf_cfg.get("dropout", 0.1)
     epochs = tf_cfg.get("epochs", 30)
-    batch_size = tf_cfg.get("batch_size", 64)
+    batch_size = tf_cfg.get("batch_size", 512)
 
     # ------------------------------------------------------------------
     # Issue 4 fix: scale features using ONLY the training split.
@@ -332,7 +332,7 @@ def train_tcn(
         Reads from ``config['models']['tcn']`` — keys
         ``filters`` (int, default 64), ``kernel_size`` (int, default 3),
         ``num_blocks`` (int, default 3), ``dropout`` (float, default 0.1),
-        ``epochs`` (int, default 30), ``batch_size`` (int, default 64).
+        ``epochs`` (int, default 30), ``batch_size`` (int, default 512).
 
     Returns
     -------
@@ -352,7 +352,7 @@ def train_tcn(
     num_blocks = tcn_cfg.get("num_blocks", 3)
     dropout_rate = tcn_cfg.get("dropout", 0.1)
     epochs = tcn_cfg.get("epochs", 30)
-    batch_size = tcn_cfg.get("batch_size", 64)
+    batch_size = tcn_cfg.get("batch_size", 512)
 
     # ------------------------------------------------------------------
     # Issue 4 fix: scale features using ONLY the training split.
