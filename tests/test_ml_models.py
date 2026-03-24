@@ -198,27 +198,32 @@ class TestTrainXGBoost:
 # run_all_models
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(scope="module")
+def all_models_results(synthetic_station_gdf, minimal_config):
+    """Run all 6 ML models once and cache the result for the entire module.
+
+    Avoids re-training all models for each test method in TestRunAllModels,
+    reducing 30 total training operations down to 6.
+    """
+    return run_all_models(synthetic_station_gdf, minimal_config)
+
+
 class TestRunAllModels:
-    def test_returns_list(self, synthetic_station_gdf, minimal_config):
-        results = run_all_models(synthetic_station_gdf, minimal_config)
-        assert isinstance(results, list)
+    def test_returns_list(self, all_models_results):
+        assert isinstance(all_models_results, list)
 
-    def test_six_results(self, synthetic_station_gdf, minimal_config):
-        results = run_all_models(synthetic_station_gdf, minimal_config)
-        assert len(results) == 6
+    def test_six_results(self, all_models_results):
+        assert len(all_models_results) == 6
 
-    def test_all_results_have_correct_keys(self, synthetic_station_gdf, minimal_config):
-        results = run_all_models(synthetic_station_gdf, minimal_config)
-        for r in results:
+    def test_all_results_have_correct_keys(self, all_models_results):
+        for r in all_models_results:
             assert set(r.keys()) == RESULT_KEYS
 
-    def test_model_names_are_distinct(self, synthetic_station_gdf, minimal_config):
-        results = run_all_models(synthetic_station_gdf, minimal_config)
-        names = [r["model"] for r in results]
+    def test_model_names_are_distinct(self, all_models_results):
+        names = [r["model"] for r in all_models_results]
         assert len(names) == len(set(names)), "All model names must be unique"
 
-    def test_expected_model_names_present(self, synthetic_station_gdf, minimal_config):
-        results   = run_all_models(synthetic_station_gdf, minimal_config)
-        names_set = {r["model"] for r in results}
+    def test_expected_model_names_present(self, all_models_results):
+        names_set = {r["model"] for r in all_models_results}
         expected  = {"Ridge", "Lasso", "SVR", "RandomForest", "LightGBM", "XGBoost"}
         assert names_set == expected
