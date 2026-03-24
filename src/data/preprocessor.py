@@ -381,6 +381,7 @@ def build_pipeline(config: dict) -> gpd.GeoDataFrame:
     station_gdf  = add_spatial_features(station_gdf, lakes, rivers)
     station_gdf  = add_temporal_features(station_gdf)
     station_gdf  = drop_missing_targets(station_gdf, target_col=pre_cfg["target_col"])
+    station_gdf  = station_gdf.to_crs(crs_cfg["input"])
 
     return station_gdf
 

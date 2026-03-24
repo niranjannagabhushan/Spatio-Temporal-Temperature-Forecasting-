@@ -54,7 +54,10 @@ def load_weather_data(path: str) -> pd.DataFrame:
         Raw weather measurements with columns: station_id, temperature,
         timestamp.
     """
-    return pd.read_csv(Path(path), parse_dates=["timestamp"])
+    df = pd.read_csv(Path(path))
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df
 
 
 def load_station_metadata(path: str) -> pd.DataFrame:
