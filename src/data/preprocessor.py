@@ -1,21 +1,32 @@
 """
 src/data/preprocessor.py
-------------------------
-Preprocessing pipeline: merging, GeoDataFrame construction, CRS reprojection,
-spatial feature engineering, temporal feature engineering, and target cleaning.
+────────────────────────
+Full preprocessing pipeline extracted from the duplicated notebook cells in
+``krigmain.ipynb`` and ``mlkricat.ipynb``.
 
-Every step is exposed as a standalone function so individual stages can be
-unit-tested or re-used independently.  ``build_pipeline`` wires them all
-together using settings from ``config.yaml``.
+Pipeline order (also reflected in ``build_pipeline``):
+    1.  load_config           – read config.yaml (via loader.py)
+    2.  load_weather_data     – raw measurements CSV
+    3.  load_station_metadata – station metadata CSV (renames 'id' → 'station_id')
+    4.  load_shapefiles       – lakes and rivers GeoDataFrames
+    5.  merge_station_data    – right-merge on station_id
+    6.  build_geodataframe    – DataFrame → GeoDataFrame (EPSG:4326)
+    7.  reproject             – reproject all layers to EPSG:32632 for metric ops
+    8.  add_spatial_features  – nearest-join distances to lake and river
+    9.  add_temporal_features – parse timestamp, extract hour/dow/doy/month
+    10. drop_missing_targets  – drop rows where temperature is NaN
 
-Note on SettingWithCopyWarning
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-All ``.dt`` accessor assignments use ``.loc[]`` (e.g.
-``gdf.loc[:, 'hour'] = gdf['timestamp'].dt.hour``) to avoid the
-``SettingWithCopyWarning`` that was present in both source notebooks.
+Fixes applied vs. the original notebooks
+-----------------------------------------
+* All ``dt`` accessor assignments use ``.loc[]`` to suppress the
+  ``SettingWithCopyWarning`` that appeared in both notebooks.
+* ``index_right`` is dropped after *each* spatial join (not only the first).
+* ``pd.to_datetime()`` is explicitly called before extracting temporal features.
 """
 
 from __future__ import annotations
+
+from typing import Tuple
 
 import geopandas as gpd
 import pandas as pd
@@ -28,9 +39,7 @@ from src.data.loader import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Step 1 — merge tabular tables
-# ---------------------------------------------------------------------------
+# ── Step 5 ────────────────────────────────────────────────────────────────────
 
 def merge_station_data(
     weather_data: pd.DataFrame,
@@ -38,49 +47,48 @@ def merge_station_data(
 ) -> pd.DataFrame:
     """Right-merge weather measurements with station metadata on ``station_id``.
 
-    A *right* merge ensures every station in the metadata table is present in
-    the result even when it has no corresponding measurement rows.
+    A *right* merge is used so that every station in the metadata is kept even
+    if it has no measurements (those rows will have NaN temperatures and are
+    later removed by ``drop_missing_targets``).
 
     Parameters
     ----------
     weather_data:
-        Measurements DataFrame with at least columns:
-        ``station_id``, ``temperature``, ``timestamp``.
+        DataFrame with columns: station_id, temperature, timestamp.
     station_metadata:
-        Metadata DataFrame with at least columns:
-        ``station_id``, ``name``, ``altitude``, ``latitude``, ``longitude``.
+        DataFrame with columns: station_id, name, altitude, latitude,
+        longitude.
 
     Returns
     -------
     pd.DataFrame
-        Merged DataFrame keyed on ``station_id``.
+        Merged DataFrame combining both inputs.
     """
     return pd.merge(weather_data, station_metadata, on="station_id", how="right")
 
 
-# ---------------------------------------------------------------------------
-# Step 2 — build GeoDataFrame
-# ---------------------------------------------------------------------------
+# ── Step 6 ────────────────────────────────────────────────────────────────────
 
 def build_geodataframe(
     merged_data: pd.DataFrame,
     input_crs: str,
 ) -> gpd.GeoDataFrame:
-    """Convert a merged DataFrame to a GeoDataFrame using lon/lat columns.
+    """Convert a merged DataFrame to a point GeoDataFrame.
+
+    Geometry is derived from the ``longitude`` and ``latitude`` columns, and
+    the CRS is set to *input_crs* (typically ``EPSG:4326``).
 
     Parameters
     ----------
     merged_data:
-        DataFrame that must contain ``longitude`` and ``latitude`` columns.
+        Output of ``merge_station_data``.
     input_crs:
-        EPSG string for the coordinate reference system of the raw coordinates
-        (e.g. ``"EPSG:4326"`` for WGS-84 geographic).
+        EPSG string for the source geographic CRS, e.g. ``"EPSG:4326"``.
 
     Returns
     -------
     gpd.GeoDataFrame
-        Point GeoDataFrame with ``geometry`` derived from
-        ``longitude`` / ``latitude`` and CRS set to *input_crs*.
+        Point GeoDataFrame in *input_crs*.
     """
     return gpd.GeoDataFrame(
         merged_data,
@@ -89,31 +97,30 @@ def build_geodataframe(
     )
 
 
-# ---------------------------------------------------------------------------
-# Step 3 — reproject to metric CRS
-# ---------------------------------------------------------------------------
+# ── Step 7 ────────────────────────────────────────────────────────────────────
 
 def reproject(
     gdf: gpd.GeoDataFrame,
     lakes: gpd.GeoDataFrame,
     rivers: gpd.GeoDataFrame,
     target_crs: str,
-) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
-    """Reproject station GeoDataFrame, lakes, and rivers to *target_crs*.
+) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """Reproject stations, lakes, and rivers to a common projected CRS.
 
-    A metric (projected) CRS such as UTM is required before running
-    ``sjoin_nearest`` so that distances are expressed in metres.
+    All three layers must share the same CRS before spatial nearest-joins and
+    metric distance computations.  The target is typically ``EPSG:32632``
+    (UTM zone 32 N), which gives distances in metres.
 
     Parameters
     ----------
     gdf:
-        Station point GeoDataFrame in its original CRS.
+        Station GeoDataFrame (output of ``build_geodataframe``).
     lakes:
-        Lakes polygon GeoDataFrame.
+        Lakes GeoDataFrame (output of ``load_shapefiles``).
     rivers:
-        Rivers linestring GeoDataFrame.
+        Rivers GeoDataFrame (output of ``load_shapefiles``).
     target_crs:
-        Target EPSG string (e.g. ``"EPSG:32632"`` for UTM zone 32N).
+        EPSG string for the projected CRS, e.g. ``"EPSG:32632"``.
 
     Returns
     -------
@@ -126,61 +133,74 @@ def reproject(
     return gdf, lakes, rivers
 
 
-# ---------------------------------------------------------------------------
-# Step 4 — spatial feature engineering
-# ---------------------------------------------------------------------------
+# ── Step 8 ────────────────────────────────────────────────────────────────────
 
 def add_spatial_features(
     station_gdf: gpd.GeoDataFrame,
     lakes: gpd.GeoDataFrame,
     rivers: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
-    """Enrich stations with distance-to-lake and distance-to-river features.
+    """Enrich stations with nearest-lake and nearest-river distances.
 
-    Performs two sequential ``sjoin_nearest`` operations and cleans up the
-    ``index_right`` column produced by each join before running the next one.
+    Two sequential ``sjoin_nearest`` calls add:
+    * ``distance_to_lake``  – metric distance to the closest lake polygon.
+    * ``distance_to_river`` – metric distance to the closest river line.
+
+    The ``index_right`` column introduced by each join is dropped immediately
+    after that join to avoid name conflicts in the second join.
 
     Parameters
     ----------
     station_gdf:
-        Station point GeoDataFrame (must be in a projected metric CRS).
+        Reprojected station GeoDataFrame (output of ``reproject``).
     lakes:
-        Lakes polygon GeoDataFrame (same CRS as *station_gdf*).
+        Reprojected lakes GeoDataFrame.
     rivers:
-        Rivers linestring GeoDataFrame (same CRS as *station_gdf*).
+        Reprojected rivers GeoDataFrame.
 
     Returns
     -------
     gpd.GeoDataFrame
-        Enriched GeoDataFrame with additional columns:
-        ``distance_to_lake`` and ``distance_to_river``.
+        Station GeoDataFrame with ``distance_to_lake`` and
+        ``distance_to_river`` columns added.
     """
-    # --- 1. Nearest lake ---
-    result = gpd.sjoin_nearest(
-        station_gdf, lakes, how="left", distance_col="distance_to_lake"
+    # ── 1. Nearest lake ───────────────────────────────────────────────────────
+    station_gdf = gpd.sjoin_nearest(
+        station_gdf,
+        lakes,
+        how="left",
+        distance_col="distance_to_lake",
     )
-    if "index_right" in result.columns:
-        result = result.drop(columns=["index_right"])
+    if "index_right" in station_gdf.columns:
+        station_gdf.drop(columns=["index_right"], inplace=True)
 
-    # --- 2. Nearest river ---
-    result = gpd.sjoin_nearest(
-        result, rivers, how="left", distance_col="distance_to_river"
+    # ── 2. Nearest river ──────────────────────────────────────────────────────
+    station_gdf = gpd.sjoin_nearest(
+        station_gdf,
+        rivers,
+        how="left",
+        distance_col="distance_to_river",
     )
-    if "index_right" in result.columns:
-        result = result.drop(columns=["index_right"])
+    if "index_right" in station_gdf.columns:
+        station_gdf.drop(columns=["index_right"], inplace=True)
 
-    return result
+    return station_gdf
 
 
-# ---------------------------------------------------------------------------
-# Step 5 — temporal feature engineering
-# ---------------------------------------------------------------------------
+# ── Step 9 ────────────────────────────────────────────────────────────────────
 
 def add_temporal_features(station_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Parse the ``timestamp`` column and extract cyclic temporal features.
+    """Parse the timestamp column and extract cyclic temporal features.
 
-    Fixes the ``SettingWithCopyWarning`` from the notebooks by using
-    ``.loc[]`` for every assignment.
+    The ``timestamp`` column is parsed with ``pd.to_datetime()`` before
+    feature extraction.  All assignments use ``.loc[]`` to avoid the
+    ``SettingWithCopyWarning`` that was present in the original notebooks.
+
+    New columns added:
+    * ``hour``        – hour of the day (0–23)
+    * ``day_of_week`` – day of the week (0 = Monday … 6 = Sunday)
+    * ``day_of_year`` – ordinal day of the year (1–366)
+    * ``month``       – month of the year (1–12)
 
     Parameters
     ----------
@@ -190,36 +210,38 @@ def add_temporal_features(station_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     Returns
     -------
     gpd.GeoDataFrame
-        Same GeoDataFrame with four additional columns:
-        ``hour``, ``day_of_week``, ``day_of_year``, ``month``.
+        GeoDataFrame with the four new temporal feature columns appended.
     """
-    # Ensure the column is a proper datetime type before using .dt accessors
+    # Ensure timestamp is a proper datetime dtype before using .dt accessor
     station_gdf.loc[:, "timestamp"] = pd.to_datetime(station_gdf["timestamp"])
 
-    station_gdf.loc[:, "hour"] = station_gdf["timestamp"].dt.hour
+    station_gdf.loc[:, "hour"]        = station_gdf["timestamp"].dt.hour
     station_gdf.loc[:, "day_of_week"] = station_gdf["timestamp"].dt.dayofweek
     station_gdf.loc[:, "day_of_year"] = station_gdf["timestamp"].dt.dayofyear
-    station_gdf.loc[:, "month"] = station_gdf["timestamp"].dt.month
+    station_gdf.loc[:, "month"]       = station_gdf["timestamp"].dt.month
 
     return station_gdf
 
 
-# ---------------------------------------------------------------------------
-# Step 6 — drop rows with missing target
-# ---------------------------------------------------------------------------
+# ── Step 10 ───────────────────────────────────────────────────────────────────
 
 def drop_missing_targets(
     station_gdf: gpd.GeoDataFrame,
     target_col: str = "temperature",
 ) -> gpd.GeoDataFrame:
-    """Drop rows where the target column is NaN.
+    """Drop rows where the modelling target is NaN.
+
+    Stations that have no measurements after the right-merge will have NaN
+    temperatures; they cannot be used for training or evaluation and are
+    removed here.
 
     Parameters
     ----------
     station_gdf:
-        GeoDataFrame that must contain *target_col*.
+        Enriched station GeoDataFrame.
     target_col:
-        Name of the target variable column.  Defaults to ``"temperature"``.
+        Name of the target column to check for missing values.
+        Defaults to ``"temperature"``.
 
     Returns
     -------
@@ -229,72 +251,64 @@ def drop_missing_targets(
     return station_gdf.dropna(subset=[target_col])
 
 
-# ---------------------------------------------------------------------------
-# Convenience entry-point
-# ---------------------------------------------------------------------------
+# ── Convenience entry-point ───────────────────────────────────────────────────
 
 def build_pipeline(config: dict) -> gpd.GeoDataFrame:
-    """Run the full preprocessing pipeline end-to-end from a config dict.
+    """Run the full data loading and preprocessing pipeline from a config dict.
 
-    This is the single call a notebook needs to replace ~15 boilerplate cells:
+    This is the single function that notebooks can call instead of repeating
+    15+ cells of identical setup code:
 
     .. code-block:: python
 
-        from src.data.loader import load_config
         from src.data.preprocessor import build_pipeline
+        from src.data.loader import load_config
 
         config = load_config("config.yaml")
         station_gdf = build_pipeline(config)
 
-    Pipeline stages
-    ---------------
-    1. ``load_weather_data``     — read measurements CSV
-    2. ``load_station_metadata`` — read & normalise metadata CSV
-    3. ``load_shapefiles``       — read lakes & rivers shapefiles
-    4. ``merge_station_data``    — right-merge on ``station_id``
-    5. ``build_geodataframe``    — create point GeoDataFrame (EPSG:4326)
-    6. ``reproject``             — reproject all layers to UTM (EPSG:32632)
-    7. ``add_spatial_features``  — distance to nearest lake / river
-    8. ``add_temporal_features`` — hour, day_of_week, day_of_year, month
-    9. ``drop_missing_targets``  — remove rows with NaN temperature
+    Pipeline steps executed in order
+    ---------------------------------
+    1.  ``load_weather_data``     – raw measurements CSV
+    2.  ``load_station_metadata`` – station metadata CSV
+    3.  ``load_shapefiles``       – lakes and rivers GeoDataFrames
+    4.  ``merge_station_data``    – right-merge on station_id
+    5.  ``build_geodataframe``    – DataFrame → GeoDataFrame (input CRS)
+    6.  ``reproject``             – reproject all layers to target CRS
+    7.  ``add_spatial_features``  – nearest lake/river distances
+    8.  ``add_temporal_features`` – hour, day_of_week, day_of_year, month
+    9.  ``drop_missing_targets``  – remove rows with NaN temperature
 
     Parameters
     ----------
     config:
-        Dictionary loaded from ``config.yaml`` via :func:`load_config`.
+        Dictionary loaded from ``config.yaml`` via ``load_config()``.
 
     Returns
     -------
     gpd.GeoDataFrame
-        Fully preprocessed station GeoDataFrame ready for modelling.
+        Fully preprocessed station GeoDataFrame, ready for modelling.
     """
-    # -- Resolve paths and settings from config --
     data_cfg = config["data"]
-    crs_cfg = config["crs"]
-    target_col = config.get("model", {}).get("target", "temperature")
+    crs_cfg  = config["crs"]
+    pre_cfg  = config["preprocessing"]
 
-    # -- Load raw data --
-    weather_data = load_weather_data(data_cfg["weather_data"])
+    # ── I/O ──────────────────────────────────────────────────────────────────
+    weather_data     = load_weather_data(data_cfg["weather_data"])
     station_metadata = load_station_metadata(data_cfg["station_metadata"])
-    lakes, rivers = load_shapefiles(
+    lakes, rivers    = load_shapefiles(
         data_cfg["lakes_shapefile"],
         data_cfg["rivers_shapefile"],
     )
 
-    # -- Tabular preprocessing --
-    merged = merge_station_data(weather_data, station_metadata)
-
-    # -- Spatial construction --
-    station_gdf = build_geodataframe(merged, input_crs=crs_cfg["input"])
+    # ── Preprocessing ────────────────────────────────────────────────────────
+    merged_data  = merge_station_data(weather_data, station_metadata)
+    station_gdf  = build_geodataframe(merged_data, input_crs=crs_cfg["input"])
     station_gdf, lakes, rivers = reproject(
         station_gdf, lakes, rivers, target_crs=crs_cfg["target"]
     )
-
-    # -- Feature engineering --
-    station_gdf = add_spatial_features(station_gdf, lakes, rivers)
-    station_gdf = add_temporal_features(station_gdf)
-
-    # -- Clean target --
-    station_gdf = drop_missing_targets(station_gdf, target_col=target_col)
+    station_gdf  = add_spatial_features(station_gdf, lakes, rivers)
+    station_gdf  = add_temporal_features(station_gdf)
+    station_gdf  = drop_missing_targets(station_gdf, target_col=pre_cfg["target_col"])
 
     return station_gdf
