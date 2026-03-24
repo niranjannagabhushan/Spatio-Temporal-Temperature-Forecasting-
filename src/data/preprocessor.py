@@ -134,6 +134,18 @@ def reproject(
 
 
 # ── Step 8 ────────────────────────────────────────────────────────────────────
+def _distance_to_nearest(
+    points_gdf: gpd.GeoDataFrame,
+    reference_gdf: gpd.GeoDataFrame,
+) -> pd.Series:
+    """Private helper: distance from each point to the nearest reference geometry.
+
+    Returns a ``pd.Series`` of distances aligned to *points_gdf*'s index.
+    Both GeoDataFrames must share the same CRS.
+    """
+    union = reference_gdf.geometry.union_all()
+    return points_gdf.geometry.distance(union)
+
 
 def add_spatial_features(
     station_gdf: gpd.GeoDataFrame,
@@ -187,7 +199,24 @@ def add_spatial_features(
     return station_gdf
 
 
+
 # ── Step 9 ────────────────────────────────────────────────────────────────────
+def _add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Private helper: add temporal columns to a plain DataFrame.
+
+    Returns a copy — the original is never mutated.
+    If no ``timestamp`` column is present, returns the copy unchanged.
+    Bad timestamps are coerced to NaT rather than raising.
+    """
+    df = df.copy()
+    if "timestamp" not in df.columns:
+        return df
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df["hour"]        = df["timestamp"].dt.hour
+    df["day_of_week"] = df["timestamp"].dt.dayofweek
+    df["day_of_year"] = df["timestamp"].dt.dayofyear
+    df["month"]       = df["timestamp"].dt.month
+    return df
 
 def add_temporal_features(station_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Parse the timestamp column and extract cyclic temporal features.
